@@ -1,32 +1,45 @@
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Moon, Pencil, Plus, Sun, Trash } from "lucide-react";
+import { Check, Pencil, Plus, Trash } from "lucide-react";
+import api from '../api'
 
-function ToDoPage() {
+function ToDoPage({ darkMode }) {
   const [tasks, setTasks] = useState([]);
   const [filter, setFilter] = useState("all");
   const [newTask, setNewTask] = useState("");
-  const [darkMode, setDarkMode] = useState(false);
   const [editId, setEditId] = useState(null);
   const [editText, setEditText] = useState("");
 
   const tasksEndRef = useRef(null);
-console.log(setFilter);
+  // reference motion to avoid unused-import lint when JSX usage isn't detected
+  void motion
 
-  // Load from localStorage
+  // Load todos from server
   useEffect(() => {
-    const savedTasks = JSON.parse(localStorage.getItem("tasks")) || [];
-    const savedTheme = localStorage.getItem("theme") === "dark";
-    setTasks(savedTasks);
-    setDarkMode(savedTheme);
+    let mounted = true
+    async function load(){
+      try{
+        const res = await api.getTodos()
+        if(mounted){
+          // normalize completed to boolean and ensure each todo has a stable `id` string
+          const serverTodos = (res?.todos || []).map(t => ({ ...t, id: t._id || t.id, completed: !!t.completed }))
+          setTasks(serverTodos)
+        }
+      }catch(err){
+        console.warn('could not load todos from server', err)
+        // fallback to local storage if server unavailable
+        const savedTasks = JSON.parse(localStorage.getItem("tasks")) || [];
+        if(mounted) setTasks(savedTasks)
+      }
+    }
+    load()
+    return () => { mounted = false }
   }, []);
 
-  // Save to localStorage
+  // Save local cache of tasks
   useEffect(() => {
     localStorage.setItem("tasks", JSON.stringify(tasks));
-    localStorage.setItem("theme", darkMode ? "dark" : "light");
-    document.documentElement.classList.toggle("dark", darkMode);
-  }, [tasks, darkMode]);
+  }, [tasks]);
 
   // Scroll to newest task
   useEffect(() => {
@@ -36,20 +49,43 @@ console.log(setFilter);
   // CRUD
   const addTask = () => {
     if (newTask.trim() === "") return;
-    const task = { id: Date.now(), text: newTask, completed: false };
-    setTasks([...tasks, task]);
-    setNewTask("");
+    const text = newTask.trim()
+    setNewTask("")
+    // create on server, fallback to local id
+    ;(async () => {
+      try{
+        const res = await api.createTodo(text)
+        const todo = res?.todo
+        if(todo){
+          // normalize id and completed
+          setTasks(prev => [...prev, { ...todo, id: todo._id || todo.id, completed: !!todo.completed }])
+          return
+        }
+      }catch(err){ console.warn('createTodo failed', err) }
+      // fallback: local-only
+      const task = { id: Date.now(), text, completed: false };
+      setTasks(prev => [...prev, task]);
+    })()
   };
 
-  const toggleTask = (id) =>
-    setTasks(
-      tasks.map((t) =>
-        t.id === id ? { ...t, completed: !t.completed } : t
-      )
-    );
+  const toggleTask = (id) => {
+    setTasks(prev => prev.map(t => t.id === id ? { ...t, completed: !t.completed } : t))
+    // sync to server
+    const target = tasks.find(t=>t.id===id)
+    const newCompleted = target ? !target.completed : true
+    ;(async ()=>{
+      try{
+        await api.updateTodo(id, { completed: newCompleted ? 1 : 0 })
+      }catch(err){ console.warn('updateTodo failed', err) }
+    })()
+  }
 
-  const deleteTask = (id) =>
-    setTasks(tasks.filter((t) => t.id !== id));
+  const deleteTask = (id) =>{
+    setTasks(prev => prev.filter((t) => t.id !== id))
+    ;(async ()=>{
+      try{ await api.deleteTodo(id) }catch(err){ console.warn('deleteTodo failed', err) }
+    })()
+  }
 
   const startEdit = (task) => {
     setEditId(task.id);
@@ -57,9 +93,13 @@ console.log(setFilter);
   };
 
   const saveEdit = (id) => {
-    setTasks(tasks.map((t) => (t.id === id ? { ...t, text: editText } : t)));
+    const text = editText
+    setTasks(prev => prev.map((t) => (t.id === id ? { ...t, text } : t)));
     setEditId(null);
     setEditText("");
+    ;(async ()=>{
+      try{ await api.updateTodo(id, { text }) }catch(err){ console.warn('updateTodo failed', err) }
+    })()
   };
 
   // Filter logic
@@ -77,82 +117,78 @@ console.log(setFilter);
 
   return (
     <motion.div
-      className={`min-h-screen flex flex-col items-center justify-center py-10 transition-colors duration-700 ${
-        darkMode
-          ? "bg-[#1B3C53] text-white"
-          : "bg-[#e4f4f4] text-[#080e12]"
-      }`}
+      className={`min-h-screen flex flex-col items-center justify-center py-10 transition-colors duration-700 ${darkMode ? 'bg-gradient-to-br from-indigo-900 via-gray-900 to-gray-800 text-white' : 'bg-gradient-to-br from-indigo-50 to-white text-gray-900'}`}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
     >
-      {/* Glass Card */}
+      {/* Main card */}
       <motion.div
-        className={`w-full max-w-xl px-6 py-8 rounded-2xl backdrop-blur-md border border-white/20 shadow-2xl ${
-          darkMode ? "bg-[#234C6A]/40" : "bg-[#1B3C53]/40"
-        }`}
-        initial={{ scale: 0.95, opacity: 0 }}
+        className={`w-full max-w-4xl px-6 py-8 rounded-2xl backdrop-blur-md border border-white/10 shadow-2xl ${darkMode ? 'bg-gradient-to-br from-indigo-900/60 via-indigo-800/50 to-indigo-700/40' : 'bg-gradient-to-br from-white/80 to-indigo-50'}`}
+        initial={{ scale: 0.98, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        transition={{ type: "spring", stiffness: 100 }}
+        transition={{ type: "spring", stiffness: 120 }}
       >
         {/* Header */}
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-4xl font-bold text-transparent  rounded-lg bg-clip-text bg-gradient-to-r from-[#060606] to-[#b06f6f] p-2 shadow-lg">
-            📝 My Tasks
-          </h1>
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+          <div>
+            <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight flex items-center gap-3">
+              <span className="text-3xl">📝</span>
+              <span>My Tasks</span>
+            </h1>
+            <p className={`${darkMode ? 'text-gray-300' : 'text-gray-600'} mt-1 text-sm`}>A focused list to help you ship work faster.</p>
+          </div>
 
-          {/* Glossy Switch */}
-          <motion.div
-            className="w-16 h-8 rounded-full relative cursor-pointer shadow-lg"
-            onClick={() => setDarkMode(!darkMode)}
-            initial={false}
-          >
-            <motion.div
-              className={`absolute inset-0 rounded-full ${
-                darkMode
-                  ? "bg-[#234C6A]/80 shadow-inner"
-                  : "bg-[#B4DEBD]/70 shadow-inner"
-              }`}
-              style={{ backdropFilter: "blur(6px)" }}
-              transition={{ duration: 0.4 }}
-            />
-            <motion.div
-              className="w-7 h-7 rounded-full bg-white dark:bg-[#456882] shadow-md absolute top-0.5"
-              animate={{ x: darkMode ? 32 : 1 }}
-              transition={{ type: "spring", stiffness: 200, damping: 20 }}
-            >
-              <motion.div
-                className="flex items-center justify-center w-full h-full"
-                initial={false}
-                animate={{ rotate: darkMode ? 180 : 0 }}
-              >
-                {darkMode ? (
-                  <Sun className="text-yellow-400 w-4 h-4" />
-                ) : (
-                  <Moon className="text-[#234C6A] w-4 h-4" />
-                )}
-              </motion.div>
-            </motion.div>
-          </motion.div>
+          {/* Stats + progress */}
+          <div className="w-full md:w-72">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-sm text-gray-500 dark:text-gray-300">Progress</div>
+              <div className="text-sm font-semibold">{rate}%</div>
+            </div>
+            <div className="w-full h-2 bg-white/30 dark:bg-white/10 rounded-full overflow-hidden">
+              <div className="h-2 bg-indigo-500 rounded-full" style={{ width: `${rate}%` }} />
+            </div>
+            <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mt-2">
+              <div>{active} active</div>
+              <div>{completed} done</div>
+            </div>
+          </div>
         </div>
 
         {/* Input */}
-        <div className="flex gap-2 mb-4">
-          <input
-            type="text"
-            value={newTask}
-            onChange={(e) => setNewTask(e.target.value)}
-            placeholder="What needs to be done?"
-            className="flex-1 p-3 rounded-lg border border-white/40 bg-white/30 dark:bg-[#234C6A]/40 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#6b83a1] transition"
-          />
+        <div className="flex flex-col sm:flex-row gap-3 mb-4">
+          <div className="relative flex-1">
+            <input
+              type="text"
+              value={newTask}
+              onChange={(e) => setNewTask(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTask(); } }}
+              placeholder="Add a new task — e.g. 'Buy coffee'"
+              aria-label="New task"
+              className={`w-full p-3 pl-4 rounded-xl border focus:outline-none focus:ring-2 focus:ring-indigo-400 transition ${darkMode ? 'bg-gray-800/60 border-gray-700 placeholder-gray-300 text-gray-100' : 'bg-white/70 border-white/20 placeholder-gray-500 text-gray-900'}`}
+            />
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">Press Enter to add</span>
+          </div>
           <motion.button
             onClick={addTask}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            className="bg-gradient-to-r from-[#456882] to-[#1B3C53] text-white px-6 py-2 rounded-lg shadow-lg flex justify-center items-center gap-2 hover:opacity-90"
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.97 }}
+            className="shrink-0 bg-indigo-600 text-white px-5 py-3 rounded-xl shadow-md flex items-center gap-2 hover:bg-indigo-700"
           >
             <Plus/>
-            Add Task
+            Add
           </motion.button>
+        </div>
+
+        {/* Filters */}
+        <div className="flex items-center justify-start gap-3 mb-4">
+          {['all','active','completed'].map(f=> (
+            <button
+              key={f}
+              onClick={() => setFilter(f)}
+              className={`px-3 py-1 rounded-full text-sm ${filter===f ? 'bg-indigo-600 text-white' : 'bg-white/10 dark:bg-white/5 text-gray-700 dark:text-gray-200'}`}
+              aria-pressed={filter===f}
+            >{f[0].toUpperCase() + f.slice(1)}</button>
+          ))}
         </div>
 
         {/* Task List Container */}
@@ -167,7 +203,7 @@ console.log(setFilter);
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.8 }}
                   transition={{ duration: 0.3 }}
-                  className="flex justify-between items-center p-4 mb-2 rounded-lg bg-white/30 dark:bg-[#234C6A]/40 backdrop-blur-md border border-white/20 shadow hover:shadow-xl transition-all"
+                  className={`flex justify-between items-center p-4 mb-3 rounded-xl backdrop-blur-md border border-white/10 shadow-sm hover:shadow-md transition-all ${darkMode ? 'bg-indigo-900/40' : 'bg-white/60'}`}
                 >
                   <div className="flex items-center gap-3 flex-1">
                     <span className="font-semibold">{index + 1}.</span>
@@ -175,7 +211,7 @@ console.log(setFilter);
                       type="checkbox"
                       checked={task.completed}
                       onChange={() => toggleTask(task.id)}
-                      className="w-5 h-5 cursor-pointer accent-[#456882]"
+                      className="w-5 h-5 cursor-pointer accent-indigo-500"
                     />
                     {editId === task.id ? (
                       <input
@@ -188,11 +224,7 @@ console.log(setFilter);
                     ) : (
                       <span
                         onClick={() => toggleTask(task.id)}
-                        className={`flex-1 text-left cursor-pointer text-base ${
-                          task.completed
-                            ? "line-through text-gray-300"
-                            : "hover:text-[#91C4C3]"
-                        }`}
+                        className={`flex-1 text-left cursor-pointer text-base capitalize ${task.completed ? 'line-through text-gray-300' : 'hover:text-[#e4e8e7]'}`}
                       >
                         {task.text}
                       </span>
@@ -203,14 +235,14 @@ console.log(setFilter);
                     {editId === task.id ? (
                       <button
                         onClick={() => saveEdit(task.id)}
-                        className="text-green-400 hover:scale-110 transition"
+                        className="text-green-500 hover:scale-110 transition"
                       >
                         <Check />
                       </button>
                     ) : (
                       <button
                         onClick={() => startEdit(task)}
-                        className="text-blue-800 hover:scale-110 transition"
+                        className="text-blue-700 hover:scale-110 transition"
                       >
                         <Pencil />
                       </button>
@@ -225,13 +257,11 @@ console.log(setFilter);
                 </motion.div>
               ))
             ) : (
-              <motion.p
-                className="text-gray-200 mt-10 text-center font-bold"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-              >
-                No tasks yet — add one above!
-              </motion.p>
+              <motion.div className={`flex flex-col items-center justify-center py-12 text-center ${darkMode ? 'text-gray-300' : 'text-gray-500'}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                <div className="mb-4 text-6xl">✨</div>
+                <h3 className="text-xl font-semibold mb-2">No tasks yet</h3>
+                <p className="text-sm">Add your first task using the input above — it's quick and easy.</p>
+              </motion.div>
             )}
           </AnimatePresence>
           <div ref={tasksEndRef} />
@@ -239,25 +269,25 @@ console.log(setFilter);
 
         {/* Stats */}
         <motion.div
-          className="grid grid-cols-4 gap-4 p-4 rounded-xl bg-white/10 dark:bg-[#234C6A]/30 backdrop-blur-md border border-white/20"
+          className={`grid grid-cols-4 gap-4 p-4 rounded-xl backdrop-blur-md border border-white/20 ${darkMode ? 'bg-indigo-900/30' : 'bg-white/10'}`}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
         >
           <div>
             <h3 className="text-lg  font-bold ">{total}</h3>
-            <p className="text-md font-bold text-gray-200">Total</p>
+            <p className={`text-md font-bold ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Total</p>
           </div>
           <div>
             <h3 className="text-lg font-bold">{active}</h3>
-            <p className="text-md font-bold text-gray-200">Active</p>
+            <p className={`text-md font-bold ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Active</p>
           </div>
           <div>
             <h3 className="text-lg font-bold">{completed}</h3>
-            <p className="text-md font-bold text-gray-200">Completed</p>
+            <p className={`text-md font-bold ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Completed</p>
           </div>
           <div>
             <h3 className="text-lg font-bold">{rate}%</h3>
-            <p className="text-md font-bold text-gray-200">Rate</p>
+            <p className={`text-md font-bold ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Rate</p>
           </div>
         </motion.div>
       </motion.div>
