@@ -33,3 +33,6 @@ body{
   scrollbar-color: #456882 #1B3C53;
 }
  
+.menu-item {
+  @apply flex items-center gap-3 px-4 py-2 w-full text-left hover:bg-indigo-500/10 transition;
+}

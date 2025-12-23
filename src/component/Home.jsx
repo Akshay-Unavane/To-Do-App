@@ -2,6 +2,9 @@ import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Check, Pencil, Plus, Trash } from "lucide-react";
 import api from '../api'
+import ProfileMenu from "./profileMenu";
+
+
 
 function ToDoPage({ darkMode }) {
   const [tasks, setTasks] = useState([]);
@@ -121,6 +124,7 @@ function ToDoPage({ darkMode }) {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
     >
+      
       {/* Main card */}
       <motion.div
         className={`w-full max-w-4xl px-6 py-8 rounded-2xl backdrop-blur-md border border-white/10 shadow-2xl ${darkMode ? 'bg-gradient-to-br from-indigo-900/60 via-indigo-800/50 to-indigo-700/40' : 'bg-gradient-to-br from-white/80 to-indigo-50'}`}
@@ -137,6 +141,8 @@ function ToDoPage({ darkMode }) {
             </h1>
             <p className={`${darkMode ? 'text-gray-300' : 'text-gray-600'} mt-1 text-sm`}>A focused list to help you ship work faster.</p>
           </div>
+
+          
 
           {/* Stats + progress */}
           <div className="w-full md:w-72">

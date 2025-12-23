@@ -1,3 +1,6 @@
+export async function deleteTodo(id){
+  return authFetch(`/api/todos/${id}`, { method: 'DELETE' })
+}
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4000'
 
 function _tokenKey(){ return 'todo_app_token' }
@@ -50,10 +53,27 @@ export async function updateTodo(id, body){
   return authFetch(`/api/todos/${id}`, { method: 'PUT', body: JSON.stringify(body) })
 }
 
-export async function deleteTodo(id){
-  return authFetch(`/api/todos/${id}`, { method: 'DELETE' })
+
+export async function resetPassword(email, newPassword) {
+  return authFetch('/api/reset-password', { method: 'POST', body: JSON.stringify({ email, newPassword }) });
 }
 
 export default {
-  setToken, getToken, login, register, me, getTodos, createTodo, updateTodo, deleteTodo
+  setToken, getToken, login, register, me, getTodos, createTodo, updateTodo, deleteTodo, resetPassword
 }
+
+export const updateProfile = (name) =>
+  authFetch('/api/profile', {
+    method: 'PUT',
+    body: JSON.stringify({ name }),
+  });
+
+export const changePassword = (newPassword) =>
+  authFetch('/api/change-password', {
+    method: 'POST',
+    body: JSON.stringify({ newPassword }),
+  });
+
+export const logout = () => {
+  localStorage.removeItem('todo_app_token');
+};
