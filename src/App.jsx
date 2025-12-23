@@ -2,10 +2,11 @@ import React, { useState, useEffect } from "react";
 import Navbar from "./component/Navbar";
 import Landing from "./component/Landing";
 import Login from "./component/Login";
-import ToDoPage from "./component/home";
+
 import api, { setToken } from './api'
 import Toast from './component/Toast'
 import Loader from './component/Loader'
+import ToDoPage from "./component/Home";
 
 function App (){
   const [user, setUser] = useState(() => {
@@ -97,7 +98,8 @@ function App (){
       <Navbar user={user} onLoginClick={() => setShowLogin(true)} onLogout={handleLogout} darkMode={darkMode} setDarkMode={setDarkMode} />
 
       {user ? (
-        <ToDoPage darkMode={darkMode} />
+       
+        <ToDoPage darkMode={darkMode}/>
       ) : (
         <>
           <Landing onLoginClick={() => setShowLogin(true)} darkMode={darkMode} />
